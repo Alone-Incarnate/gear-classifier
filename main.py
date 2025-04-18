@@ -1,99 +1,103 @@
-import os
-from mvIMPACT import acquire
-from PIL import Image
+# Example application for mvIMPACT Acquire in Python
+# Copyright (C) 2005 - 2024 Balluff GmbH
+# Authors: APIs and drivers development team at Balluff GmbH
+# Initial date: 2005-05-04
+# License: MIT License (see original C++ code for details)
+
+import sys
+import cv2
 import numpy as np
+from mvIMPACT import acquire
 
-def capture_single_image(output_path="captured_image.png"):
-    # Create output directory if it doesn't exist
-    output_dir = os.path.dirname(output_path)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    # Initialize device manager
-    dev_mgr = acquire.DeviceManager()
-    dev_mgr.updateDeviceList()
-
-    # Check for available devices
+def get_device_from_user_input(dev_mgr):
+    """Prompt user to select a device from the device manager."""
     if dev_mgr.deviceCount() == 0:
-        print("No camera found")
-        return False
-
-    # Open the first device
-    dev = dev_mgr.getDevice(0)
+        print("No devices found!")
+        return None
+    print("Available devices:")
+    for i in range(dev_mgr.deviceCount()):
+        dev = dev_mgr.getDevice(i)
+        print(f"{i}: {dev.serial}, {dev.product}")
     try:
-        dev.open()
-        print(f"Using device: {dev.serial.read()}")
-
-        # Initialize function interface
-        fi = acquire.FunctionInterface(dev)
-
-        # Start acquisition
-        fi.acquisitionStart()
-        print("Acquisition started")
-
-        # Request a single image
-        request_nr = fi.imageRequestSingle()
-        if request_nr != acquire.DMR_NO_ERROR:
-            print("Failed to queue image request")
-            return False
-
-        # Wait for the image (timeout: 10 seconds)
-        request_nr = fi.imageRequestWaitFor(10000)
-        if fi.isRequestNrValid(request_nr):
-            request = fi.getRequest(request_nr)
-            if request.isOK:
-                try:
-                    # Get image properties
-                    image_buffer = request.imageData  # Property, not method
-                    width = request.imageWidth
-                    height = request.imageHeight
-                    channel_count = request.imageChannelCount.read()  # Use .read() for PropertyI
-                    channel_bit_depth = request.imageChannelBitDepth.read()  # Use .read() for PropertyI
-                    pixel_format = request.imagePixelFormat
-
-                    # Debug: Print property types and pixel format
-                    print(f"Pixel format: {pixel_format}")
-                    print(f"Channel count: {channel_count}, type: {type(channel_count)}")
-                    print(f"Channel bit depth: {channel_bit_depth}, type: {type(channel_bit_depth)}")
-
-                    # Determine data type
-                    channel_type = np.uint16 if channel_bit_depth > 8 else np.uint8
-
-                    # Convert buffer to numpy array
-                    if channel_count == 1:
-                        arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width)
-                        mode = 'L'  # Grayscale
-                    else:
-                        arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width, channel_count)
-                        mode = 'RGB' if channel_count == 3 else 'RGBA'
-
-                    # Create and save PIL image
-                    img = Image.fromarray(arr, mode=mode)
-                    img.save(output_path)
-                    print(f"Image saved to {output_path}")
-
-                    # Unlock request
-                    request.unlock()
-                    return True
-                except Exception as e:
-                    print(f"Error processing image: {e}")
-                    return False
-            else:
-                print("Image capture failed")
-                return False
+        idx = int(input("Select device index: "))
+        if 0 <= idx < dev_mgr.deviceCount():
+            return dev_mgr.getDevice(idx)
         else:
-            print(f"imageRequestWaitFor failed: {request_nr}, {acquire.ImpactAcquireException.getErrorCodeAsString(request_nr)}")
-            return False
+            print("Invalid index!")
+            return None
+    except ValueError:
+        print("Invalid input!")
+        return None
 
-    except Exception as e:
-        print(f"Error: {e}")
-        return False
+def main():
+    # Initialize DeviceManager
+    dev_mgr = acquire.DeviceManager()
+    
+    # Get device from user input
+    p_dev = get_device_from_user_input(dev_mgr)
+    if not p_dev:
+        print("Unable to continue! Press Enter to exit.")
+        input()
+        return 1
 
-    finally:
-        # Stop acquisition and close device
-        fi.acquisitionStop()
-        print("Acquisition stopped")
-        dev.close()
+    try:
+        # Open the device
+        p_dev.open()
+    except acquire.ImpactAcquireException as e:
+        print(f"An error occurred while opening the device (error code: {e.getErrorCode()}).")
+        print("Press Enter to exit.")
+        input()
+        return 1
+
+    # Create FunctionInterface
+    fi = acquire.FunctionInterface(p_dev)
+
+    # Send a single image request
+    fi.imageRequestSingle()
+
+    # Start acquisition if needed (simplified, assuming device is ready)
+    # Note: Manually starting/stopping acquisition may depend on device settings
+    fi.imageRequestWaitFor(10000)  # Wait for request to be processed
+
+    # Wait for the image (timeout: 10 seconds)
+    request_nr = fi.imageRequestWaitFor(10000)
+
+    # Check if the request is valid
+    if not fi.isRequestNrValid(request_nr):
+        print("imageRequestWaitFor failed, maybe the timeout value is too small?")
+        return 1
+
+    # Get the request object
+    p_request = fi.getRequest(request_nr)
+    
+    if p_request.isOK():
+        # Get image buffer
+        payload_type = p_request.payloadType.read()
+        if payload_type == acquire.pt2DImage:
+            image_buffer = p_request.getImageBufferDesc().getBuffer()
+            # Convert to numpy array for OpenCV
+            img_data = np.frombuffer(image_buffer.vpData, dtype=np.uint8)
+            img_data = img_data.reshape(image_buffer.iHeight, image_buffer.iWidth, -1)
+
+            # Display or log the image
+            print(f"Image captured ({p_request.imagePixelFormat.readS()}, {image_buffer.iWidth}x{image_buffer.iHeight})")
+            
+            # Display using OpenCV
+            cv2.imshow("mvIMPACT_acquire sample", img_data)
+            cv2.waitKey(0)  # Wait for key press
+            cv2.destroyAllWindows()
+        else:
+            print(f"Unsupported payload type: {payload_type}")
+    else:
+        print(f"Error: {p_request.requestResult.readS()}")
+        return 1
+
+    # Unlock the request
+    fi.imageRequestUnlock(request_nr)
+
+    print("Press Enter to exit.")
+    input()
+    return 0
 
 if __name__ == "__main__":
-    capture_single_image("captured_image.png")
+    sys.exit(main())
