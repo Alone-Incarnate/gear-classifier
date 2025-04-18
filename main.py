@@ -29,12 +29,12 @@ def capture_and_save_image(output_path="captured_image.png"):
 
         # Check if the image was captured successfully
         pRequest = fi.getRequest(requestNr)
-        if pRequest.isOK:  # Changed from isOK() to isOK
-            # Get image data
-            image_buffer = pRequest.imageData()
-            width = pRequest.imageWidth()
-            height = pRequest.imageHeight()
-            pixel_format = pRequest.imagePixelFormat()
+        if pRequest.isOK:  # Already corrected in previous response
+            # Get image data (changed from method calls to property access)
+            image_buffer = pRequest.imageData
+            width = pRequest.imageWidth
+            height = pRequest.imageHeight
+            pixel_format = pRequest.imagePixelFormat
 
             # Convert to numpy array (assuming RGB or mono format)
             if pixel_format == "Mono8":
