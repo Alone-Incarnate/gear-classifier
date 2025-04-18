@@ -29,7 +29,7 @@ def capture_and_save_image(output_path="captured_image.png"):
 
         # Check if the image was captured successfully
         pRequest = fi.getRequest(requestNr)
-        if pRequest.isOK():
+        if pRequest.isOK:  # Changed from isOK() to isOK
             # Get image data
             image_buffer = pRequest.imageData()
             width = pRequest.imageWidth()
