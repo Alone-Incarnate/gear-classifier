@@ -42,33 +42,42 @@ def capture_single_image(output_path="captured_image.png"):
         if fi.isRequestNrValid(request_nr):
             request = fi.getRequest(request_nr)
             if request.isOK:
-                # Get image properties
-                image_buffer = request.imageData  # Property, not method
-                width = request.imageWidth
-                height = request.imageHeight
-                channel_count = request.imageChannelCount
-                channel_bit_depth = request.imageChannelBitDepth
-                pixel_format = request.imagePixelFormat
+                try:
+                    # Get image properties
+                    image_buffer = request.imageData  # Property, not method
+                    width = request.imageWidth
+                    height = request.imageHeight
+                    channel_count = request.imageChannelCount.read()  # Use .read() for PropertyI
+                    channel_bit_depth = request.imageChannelBitDepth.read()  # Use .read() for PropertyI
+                    pixel_format = request.imagePixelFormat
 
-                # Determine data type
-                channel_type = np.uint16 if channel_bit_depth > 8 else np.uint8
+                    # Debug: Print property types and pixel format
+                    print(f"Pixel format: {pixel_format}")
+                    print(f"Channel count: {channel_count}, type: {type(channel_count)}")
+                    print(f"Channel bit depth: {channel_bit_depth}, type: {type(channel_bit_depth)}")
 
-                # Convert buffer to numpy array
-                if channel_count == 1:
-                    arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width)
-                    mode = 'L'  # Grayscale
-                else:
-                    arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width, channel_count)
-                    mode = 'RGB' if channel_count == 3 else 'RGBA'
+                    # Determine data type
+                    channel_type = np.uint16 if channel_bit_depth > 8 else np.uint8
 
-                # Create and save PIL image
-                img = Image.fromarray(arr, mode=mode)
-                img.save(output_path)
-                print(f"Image saved to {output_path}")
+                    # Convert buffer to numpy array
+                    if channel_count == 1:
+                        arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width)
+                        mode = 'L'  # Grayscale
+                    else:
+                        arr = np.frombuffer(image_buffer, dtype=channel_type).reshape(height, width, channel_count)
+                        mode = 'RGB' if channel_count == 3 else 'RGBA'
 
-                # Unlock request
-                request.unlock()
-                return True
+                    # Create and save PIL image
+                    img = Image.fromarray(arr, mode=mode)
+                    img.save(output_path)
+                    print(f"Image saved to {output_path}")
+
+                    # Unlock request
+                    request.unlock()
+                    return True
+                except Exception as e:
+                    print(f"Error processing image: {e}")
+                    return False
             else:
                 print("Image capture failed")
                 return False
