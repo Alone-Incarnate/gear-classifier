@@ -66,21 +66,37 @@ for i in range(framesToCapture):
                       f"{statistics.errorCount.name()}: {str(statistics.errorCount.read())} "
                       f"{statistics.captureTime_s.name()}: {str(statistics.captureTime_s.read())}")
 
+            # Debug image properties
+            width = pRequest.imageWidth.read()
+            height = pRequest.imageHeight.read()
+            channelCount = pRequest.imageChannelCount.read()
+            bitDepth = pRequest.imageChannelBitDepth.read()
+            imageSize = pRequest.imageSize.read()
+            print(f"Image {i}: {width}x{height}, Channels: {channelCount}, Bit Depth: {bitDepth}, Size: {imageSize} bytes")
+
             # Convert image data to numpy array for display
             try:
-                cbuf = (ctypes.c_char * pRequest.imageSize.read()).from_address(int(pRequest.imageData.read()))
-                channelType = numpy.uint16 if pRequest.imageChannelBitDepth.read() > 8 else numpy.uint8
+                cbuf = (ctypes.c_char * imageSize).from_address(int(pRequest.imageData.read()))
+                channelType = numpy.uint16 if bitDepth > 8 else numpy.uint8
                 arr = numpy.frombuffer(cbuf, dtype=channelType)
-                arr.shape = (pRequest.imageHeight.read(), pRequest.imageWidth.read(), pRequest.imageChannelCount.read())
-                
-                if pRequest.imageChannelCount.read() == 1:
-                    img = Image.fromarray(arr, mode='L')  # Grayscale
+
+                # Calculate expected shape
+                if channelCount == 1:
+                    # Grayscale
+                    arr.shape = (height, width)
+                    img = Image.fromarray(arr, mode='L')
+                elif channelCount == 3:
+                    # RGB
+                    arr.shape = (height, width, 3)
+                    img = Image.fromarray(arr, mode='RGB')
                 else:
-                    img = Image.fromarray(arr, mode='RGB')  # RGB
-                img.show()  # Display image (may open default viewer)
+                    raise ValueError(f"Unsupported channel count: {channelCount}")
+
+                img.show()  # Display image
                 # Optionally save image: img.save(f"capture_{i}.png")
             except Exception as e:
                 print(f"Failed to display image: {e}")
+                print("Check camera format (e.g., Bayer, YUV) or bit depth settings.")
 
             # Unlock previous request
             if pPreviousRequest is not None:
